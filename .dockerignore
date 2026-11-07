@@ -1,0 +1,29 @@
+# Artefatos locais. node_modules e dist do host não entram na imagem.
+node_modules
+dist
+coverage
+reports
+reports-out
+*.tsbuildinfo
+.eslintcache
+*.log
+npm-debug.log*
+
+# Git, CI, editor
+.git
+.github
+.cursor
+.idea
+.vscode
+.DS_Store
+
+# Não participam do build da aplicação
+k8s
+scripts
+Makefile
+*.md
+
+# Segredos
+.env
+.env.*
+tmp

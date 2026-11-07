@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Dependências
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes e cobertura
+        run: npm run test:cov
+
+      - name: Publicar relatórios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calculador-reports
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            coverage/
+            reports/junit.xml
+
+      - name: Resumo
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## Testes e cobertura"
+            if [[ -f coverage/coverage-summary.json ]] && command -v node >/dev/null 2>&1; then
+              node -e 'const s=require("./coverage/coverage-summary.json").total; for (const k of ["statements","branches","functions","lines"]) { const i=s[k]; console.log("- "+k+": "+i.pct+"% ("+i.covered+"/"+i.total+")"); }'
+            else
+              echo "- Relatório de cobertura não foi gerado."
+            fi
+            if [[ -f reports/junit.xml ]]; then
+              echo "- JUnit anexado em reports/junit.xml"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  manifests:
+    name: Manifestos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validar scripts
+        run: |
+          set -euo pipefail
+          for file in scripts/*.sh; do
+            bash -n "$file"
+          done
+
+      - name: Renderizar e validar com kubeconform
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/kubectl" "https://dl.k8s.io/release/v1.33.0/bin/linux/amd64/kubectl"
+          chmod +x "$RUNNER_TEMP/kubectl"
+          "$RUNNER_TEMP/kubectl" kustomize k8s > "$RUNNER_TEMP/rendered.yaml"
+          docker run --rm -v "$RUNNER_TEMP/rendered.yaml:/rendered.yaml:ro" \
+            ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary -kubernetes-version 1.32.0 /rendered.yaml
+
+  publish:
+    name: Imagem
+    needs: [test, manifests]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Build e push multi-arch
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          push: true
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            SOURCE=https://github.com/${{ github.repository }}

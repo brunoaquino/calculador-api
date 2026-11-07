@@ -1,0 +1,10 @@
+# Cluster local para `make kind-up` e `make local-e2e`.
+# Este arquivo não entra no kustomization: `kubectl apply -k k8s/` não o aplica.
+# O nome padrão é calculador. `kind create cluster --name` sobrescreve o campo name.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: calculador
+nodes:
+  - role: control-plane
+networking:
+  ipFamily: ipv4

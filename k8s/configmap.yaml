@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calculador-api
+  labels:
+    app.kubernetes.io/name: calculador-api
+    app.kubernetes.io/part-of: calculador
+data:
+  PORT: "8000"
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  SWAGGER_ENABLED: "true"
+  SERVICE_NAME: "calculador-api"
+  # Abaixo do limit de memória do container (256Mi).
+  HEALTH_HEAP_THRESHOLD_MB: "200"

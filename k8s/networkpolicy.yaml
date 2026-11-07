@@ -1,0 +1,43 @@
+# Nega todo Ingress e Egress de qualquer Pod do namespace.
+# A resposta de uma conexão já aceita continua válida (conntrack do CNI):
+# a API não precisa de regra de egress para responder quem a chamou.
+#
+# Probes do kubelet (startup, readiness, liveness) são tráfego local do nó.
+# Calico, Cilium e o kindnet (kind >= 0.24, incluindo o kind 0.33) permitem
+# esse tráfego mesmo com default-deny. Não use ipBlock para liberar probe.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  labels:
+    app.kubernetes.io/name: calculador-api
+    app.kubernetes.io/part-of: calculador
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Libera TCP 8000 na API só para Pods do cluster.
+# namespaceSelector vazio seleciona Pods em qualquer namespace.
+# Não há ipBlock: tráfego de fora (NodePort, LoadBalancer, host) não entra.
+# O egress da API continua negado pela política default-deny-all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-in-cluster-http
+  labels:
+    app.kubernetes.io/name: calculador-api
+    app.kubernetes.io/part-of: calculador
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: calculador-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000

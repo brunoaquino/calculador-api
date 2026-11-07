@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: calculador
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: calculador-api
+      app.kubernetes.io/instance: calculador-api
+      app.kubernetes.io/part-of: calculador
+      app.kubernetes.io/component: api
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+    includeTemplates: true
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
+
+# Imagem padrão. `make deploy` sobrescreve newName/newTag numa cópia temporária.
+images:
+  - name: calculador-api
+    newName: ghcr.io/brunoaquino/calculador-api
+    newTag: "1.0.0"
