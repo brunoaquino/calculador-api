@@ -30,3 +30,4 @@ images:
   - name: calculador-api
     newName: ghcr.io/brunoaquino/calculador-api
     newTag: "1.1.0"
+    digest: sha256:0423513fda76355342c92874fb130b6bc29cd5e806aa8354c637b7c611ee551b
