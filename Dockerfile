@@ -2,7 +2,7 @@
 
 # deps — dependências completas. O cache do npm fica fora da camada.
 # O digest é o índice multi-arch (tag@sha256), para o buildx resolver amd64 e arm64.
-FROM node:22-trixie-slim@sha256:be1e2a3dc2c4fd68cdfadad2a696a280e0d2749098bee509230174d72fb768c6 AS deps
+FROM node:25-trixie-slim@sha256:aabbe39553d15ede8a97cc60c9e1a97034ff772afcf696ea42b94e7f5f2ec71b AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -24,7 +24,7 @@ COPY --from=test /app/coverage /coverage
 COPY --from=test /app/reports /reports
 
 # prod-deps — mesmo Debian 13 (glibc) da distroless do runtime.
-FROM node:22-trixie-slim@sha256:be1e2a3dc2c4fd68cdfadad2a696a280e0d2749098bee509230174d72fb768c6 AS prod-deps
+FROM node:25-trixie-slim@sha256:aabbe39553d15ede8a97cc60c9e1a97034ff772afcf696ea42b94e7f5f2ec71b AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
