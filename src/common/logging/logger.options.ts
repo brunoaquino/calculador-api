@@ -53,7 +53,12 @@ export function shouldIgnoreAccessLog(url: string | undefined): boolean {
   }
 
   const path = url.split('?')[0];
-  return path.startsWith('/health/') || path === '/health' || path.startsWith('/docs');
+  return (
+    path.startsWith('/health/') ||
+    path === '/health' ||
+    path.startsWith('/docs') ||
+    path === '/metrics'
+  );
 }
 
 export function resolveAccessLogLevel(

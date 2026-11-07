@@ -42,6 +42,9 @@ describe('shouldIgnoreAccessLog', () => {
     ['/docs', true],
     ['/docs-json', true],
     ['/docs/swagger-ui.css', true],
+    ['/metrics', true],
+    ['/metrics?job=calculador', true],
+    ['/metrics/extra', false],
   ])('classifies %s as ignored=%s', (url, ignored) => {
     expect(shouldIgnoreAccessLog(url)).toBe(ignored);
   });
@@ -223,6 +226,10 @@ describe('createPinoHttpOptions', () => {
     });
     const docs = fakeResponse();
     middleware(asRequest(fakeRequest('/docs')), asResponse(docs.response), () => undefined);
+    const scrape = fakeResponse();
+    middleware(asRequest(fakeRequest('/metrics')), asResponse(scrape.response), () => {
+      scrape.response.emit('finish');
+    });
 
     middleware.logger
       .child({ traceId })

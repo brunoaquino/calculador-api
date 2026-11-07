@@ -21,6 +21,10 @@ spec:
       app.kubernetes.io/name: calculador-api
   template:
     metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
       labels:
         app.kubernetes.io/name: calculador-api
         app.kubernetes.io/part-of: calculador
