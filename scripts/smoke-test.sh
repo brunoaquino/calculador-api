@@ -286,8 +286,32 @@ expect_health() {
   return 0
 }
 
+expect_metrics() {
+  local raw
+  if ! raw="$(fetch "/metrics")"; then
+    fail "GET /metrics (sem resposta)"
+    return 0
+  fi
+  parse_status_body "$raw"
+  if [[ "$STATUS" != "200" ]]; then
+    fail "GET /metrics (HTTP ${STATUS}, esperado 200) $(snippet "$BODY")"
+    return 0
+  fi
+  if ! printf '%s' "$BODY" | grep -Fq 'http_request_duration_seconds'; then
+    fail "GET /metrics não contém http_request_duration_seconds"
+    return 0
+  fi
+  if ! printf '%s' "$BODY" | grep -F 'calculator_operations_total{' | grep -Fq 'operation="sum"'; then
+    fail "GET /metrics não contém calculator_operations_total{ com operation=\"sum\""
+    return 0
+  fi
+  pass "GET /metrics"
+  return 0
+}
+
 expect_health
 expect_result "GET /api/sum 2+3=5" "/api/sum?term_one=2&term_two=3" 200 5
+expect_metrics
 expect_result "GET /api/sub 4-1=3" "/api/sub?term_one=4&term_two=1" 200 3
 expect_result "GET /api/mul 3*4=12" "/api/mul?term_one=3&term_two=4" 200 12
 expect_result "GET /api/div 10/2=5" "/api/div?term_one=10&term_two=2" 200 5

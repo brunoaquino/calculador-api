@@ -28,6 +28,7 @@ export function configureApp(app: INestApplication): void {
     exclude: [
       { path: 'health/live', method: RequestMethod.GET },
       { path: 'health/ready', method: RequestMethod.GET },
+      { path: 'metrics', method: RequestMethod.GET },
     ],
   });
 
@@ -53,6 +54,7 @@ export function configureApp(app: INestApplication): void {
         .setVersion(config.version)
         .addTag('calculator', 'Basic arithmetic')
         .addTag('health', 'Liveness and readiness probes')
+        .addTag('metrics', 'Prometheus metrics')
         .build(),
     );
     SwaggerModule.setup('docs', app, document, {

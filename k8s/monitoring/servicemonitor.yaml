@@ -1,0 +1,22 @@
+# Este manifesto NÃO entra no `kubectl apply -k k8s/`: o diretório não está no
+# kustomization e o CRD ServiceMonitor só existe com o Prometheus Operator.
+# Aplicar à parte: kubectl apply -f k8s/monitoring/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: calculador-api
+  namespace: calculador
+  labels:
+    app.kubernetes.io/name: calculador-api
+    app.kubernetes.io/part-of: calculador
+spec:
+  namespaceSelector:
+    matchNames:
+      - calculador
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: calculador-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

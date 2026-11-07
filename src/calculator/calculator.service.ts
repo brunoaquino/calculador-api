@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
+import { MetricsService } from '../metrics/metrics.service';
 import { ExactDecimal, SAFE_INTEGER_LIMIT } from './exact-decimal';
 import { Operation } from './calculator.types';
 
@@ -10,12 +11,19 @@ export class CalculatorService {
   constructor(
     @InjectPinoLogger(CalculatorService.name)
     private readonly logger: PinoLogger,
+    private readonly metrics: MetricsService,
   ) {}
 
   calculate(operation: Operation, termOne: number, termTwo: number): number {
-    const result = toJsonNumber(this.evaluate(operation, termOne, termTwo));
-    this.logger.info({ operation, termOne, termTwo, result }, 'Calculation completed');
-    return result;
+    try {
+      const result = toJsonNumber(this.evaluate(operation, termOne, termTwo));
+      this.metrics.recordCalculatorOperation(operation, 'success');
+      this.logger.info({ operation, termOne, termTwo, result }, 'Calculation completed');
+      return result;
+    } catch (error) {
+      this.metrics.recordCalculatorOperation(operation, 'rejected');
+      throw error;
+    }
   }
 
   private evaluate(operation: Operation, termOne: number, termTwo: number): ExactNumber {

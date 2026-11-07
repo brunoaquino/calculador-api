@@ -8,6 +8,7 @@ import { createLoggerModuleParams } from './common/logging/logger.options';
 import { getAppConfig } from './config/app-config';
 import { isTestEnvironment, validateEnvironment } from './config/env.validation';
 import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({})
 export class AppModule {
@@ -26,6 +27,7 @@ export class AppModule {
           useFactory: (configService: ConfigService) =>
             createLoggerModuleParams(getAppConfig(configService)),
         }),
+        MetricsModule,
         CalculatorModule,
         HealthModule,
       ],

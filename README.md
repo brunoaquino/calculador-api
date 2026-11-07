@@ -15,12 +15,12 @@ cd calculador-api
 # opcional: HTML, Cobertura e JUnit sem Node na máquina
 make reports
 
-make release REGISTRY=<seu-registry> TAG=1.1.0
-make deploy IMAGE=<seu-registry>/calculador-api:1.1.0
+make release REGISTRY=<seu-registry> TAG=1.2.0
+make deploy IMAGE=<seu-registry>/calculador-api:1.2.0
 make smoke-test
 
 # edite src/ e publique uma tag nova
-make redeploy REGISTRY=<seu-registry> TAG=1.1.1
+make redeploy REGISTRY=<seu-registry> TAG=1.2.1
 make undeploy
 ```
 
@@ -71,9 +71,10 @@ O passo a passo para repetir isso na sua máquina está em [Testar localmente](#
 | Porta 8000 | `PORT=8000`. O processo escuta em `0.0.0.0`. |
 | Só dentro do cluster | Service `ClusterIP`, sem Ingress, NodePort ou LoadBalancer. NetworkPolicy default-deny e allow só de Pods do cluster. |
 | Healthcheck | `GET /health/live` e `GET /health/ready`, usados pelas probes. |
+| Métricas | `GET /metrics` no formato Prometheus: processo, HTTP por rota e operações da calculadora ([detalhes](#metricas)). |
 | Testes e cobertura | `npm run test:cov` exige 100% e grava HTML, LCOV, Cobertura e JUnit. |
 | Deploy e remoção documentados | `make deploy` / `kubectl apply -k k8s/` e `make undeploy` / `kubectl delete -k k8s/`. |
-| Alterar e subir de novo | `make redeploy TAG=1.1.1`, com rollback. |
+| Alterar e subir de novo | `make redeploy TAG=1.2.1`, com rollback. |
 
 <a id="estrutura"></a>
 
@@ -88,11 +89,13 @@ calculador-api/
 │   ├── app.setup.ts                 # prefixo /api, helmet, validação, Swagger
 │   ├── calculator/                  # /api/sum|sub|mul|div
 │   ├── health/                      # /health/live e /health/ready
+│   ├── metrics/                     # /metrics (Prometheus)
 │   ├── common/logging/              # JSON, traceId, access log
 │   ├── common/filters/              # corpo de erro padronizado
 │   └── config/                      # PORT, NODE_ENV, LOG_LEVEL, SWAGGER_ENABLED, SERVICE_NAME, HEALTH_HEAP_THRESHOLD_MB
 ├── test/                            # e2e (app.e2e-spec.ts, unhandled-exception.e2e-spec.ts)
 ├── k8s/                             # kubectl apply -k k8s/
+│   ├── monitoring/servicemonitor.yaml  # opcional, Prometheus Operator; fora do apply -k
 │   └── local/kind-config.yaml       # só para kind; não entra no apply
 ├── scripts/
 │   ├── prepare-overlay.sh           # cópia temporária com a imagem do deploy
@@ -131,7 +134,7 @@ http://calculador-api.calculador.svc.cluster.local:8000
 | --- | --- | --- |
 | `REGISTRY` | `ghcr.io/brunoaquino` | registry e namespace da imagem |
 | `IMAGE_NAME` | `calculador-api` | nome da imagem |
-| `TAG` | versão do `package.json` (`1.1.0`) | tag |
+| `TAG` | versão do `package.json` (`1.2.0`) | tag |
 | `IMAGE` | `$(REGISTRY)/$(IMAGE_NAME):$(TAG)` | referência completa |
 | `PLATFORMS` | `linux/amd64,linux/arm64` | plataformas do `make release` |
 | `NAMESPACE` | `calculador` | namespace dos comandos `kubectl` |
@@ -190,7 +193,7 @@ make docker-build
 make docker-run
 ```
 
-`make docker-build` executa `docker buildx build --load --target runtime` e carrega no Docker a imagem da arquitetura da sua máquina (`linux/arm64` no Apple Silicon), com a tag padrão `ghcr.io/brunoaquino/calculador-api:1.1.0`. `--load` existe para o `docker run` e para o kind usarem essa imagem. Essa tag local não serve para um cluster amd64.
+`make docker-build` executa `docker buildx build --load --target runtime` e carrega no Docker a imagem da arquitetura da sua máquina (`linux/arm64` no Apple Silicon), com a tag padrão `ghcr.io/brunoaquino/calculador-api:1.2.0`. `--load` existe para o `docker run` e para o kind usarem essa imagem. Essa tag local não serve para um cluster amd64.
 
 `make docker-run` executa `docker run --rm --name calculador-api -p 8000:8000` com `NODE_ENV=production`. O `-p 8000:8000` publica a porta 8000 do host só para esse teste da imagem. Ctrl+C encerra o container e o `--rm` apaga ele.
 
@@ -222,7 +225,7 @@ make local-e2e
 | --- | --- | --- |
 | `make kind-up` | `kind create cluster --name calculador --config k8s/local/kind-config.yaml` | Cria o cluster local. Se ele já existe, o alvo só avisa e segue. |
 | `make docker-build` | `docker buildx build --load --target runtime` | Gera a imagem da arquitetura da máquina, a mesma do nó kind. |
-| `make kind-load` | `kind load docker-image ghcr.io/brunoaquino/calculador-api:1.1.0 --name calculador` | Coloca essa imagem dentro do nó. O kind não puxa tag local do Docker sozinho. |
+| `make kind-load` | `kind load docker-image ghcr.io/brunoaquino/calculador-api:1.2.0 --name calculador` | Coloca essa imagem dentro do nó. O kind não puxa tag local do Docker sozinho. |
 | `make deploy` | `scripts/prepare-overlay.sh` e depois `kubectl apply -k` e `kubectl rollout status` | Sobe os manifestos com a imagem local, sem editar arquivo versionado, e espera os Pods ficarem prontos. |
 | `make smoke-test` | `bash scripts/smoke-test.sh` | Sobe um Pod `curl` no namespace `default` e chama a API pelo DNS interno. |
 
@@ -268,7 +271,7 @@ make kind-down
 
 ## Alvos do Make
 
-`make` e `make help` listam os alvos. O `help` executa um `printf` com as variáveis resolvidas e `awk -f scripts/make-help.awk Makefile`. Os caminhos abaixo usam a raiz do repositório, que o Makefile calcula sozinho. Os valores são os padrões: imagem `ghcr.io/brunoaquino/calculador-api:1.1.0`, namespace `calculador`, cluster kind `calculador`.
+`make` e `make help` listam os alvos. O `help` executa um `printf` com as variáveis resolvidas e `awk -f scripts/make-help.awk Makefile`. Os caminhos abaixo usam a raiz do repositório, que o Makefile calcula sozinho. Os valores são os padrões: imagem `ghcr.io/brunoaquino/calculador-api:1.2.0`, namespace `calculador`, cluster kind `calculador`.
 
 ### Desenvolvimento
 
@@ -324,8 +327,8 @@ O alvo `reports` do Dockerfile para no estágio de testes (`FROM scratch` com `c
 docker buildx build \
   --load \
   --target runtime \
-  --tag ghcr.io/brunoaquino/calculador-api:1.1.0 \
-  --build-arg VERSION=1.1.0 \
+  --tag ghcr.io/brunoaquino/calculador-api:1.2.0 \
+  --build-arg VERSION=1.2.0 \
   --build-arg SOURCE=https://github.com/brunoaquino/calculador-api \
   .
 ```
@@ -340,7 +343,7 @@ docker run --rm --name calculador-api \
   -e LOG_LEVEL=info \
   -e SWAGGER_ENABLED=true \
   -e SERVICE_NAME=calculador-api \
-  ghcr.io/brunoaquino/calculador-api:1.1.0
+  ghcr.io/brunoaquino/calculador-api:1.2.0
 ```
 
 **`make docker-push`** e **`make release`** — `release` só chama `docker-push`. Publica `linux/amd64` e `linux/arm64` no registry. Um Mac Apple Silicon produz arm64 no `docker-build`. Um nó amd64 recusa essa imagem com `exec format error`. O push multi-arch evita isso. Na primeira vez o Make cria o builder `calculador-builder`.
@@ -353,19 +356,19 @@ docker buildx build \
   --builder calculador-builder \
   --platform linux/amd64,linux/arm64 \
   --target runtime \
-  --tag ghcr.io/brunoaquino/calculador-api:1.1.0 \
-  --build-arg VERSION=1.1.0 \
+  --tag ghcr.io/brunoaquino/calculador-api:1.2.0 \
+  --build-arg VERSION=1.2.0 \
   --build-arg SOURCE=https://github.com/brunoaquino/calculador-api \
   --push \
   .
 ```
 
-Troque o destino com `make release REGISTRY=ghcr.io/SEU_USUARIO TAG=1.1.0`.
+Troque o destino com `make release REGISTRY=ghcr.io/SEU_USUARIO TAG=1.2.0`.
 
 **`make image-digest`** — imprime o digest do índice multi-arch de `IMAGE` no registry, para pinar o deploy por digest em vez de tag. Uma tag pode ser sobrescrita; o digest não.
 
 ```bash
-docker buildx imagetools inspect ghcr.io/brunoaquino/calculador-api:1.1.0 --format '{{json .Manifest}}' \
+docker buildx imagetools inspect ghcr.io/brunoaquino/calculador-api:1.2.0 --format '{{json .Manifest}}' \
   | awk -F'"' '/"digest"/ { print $4; exit }'
 ```
 
@@ -374,7 +377,7 @@ docker buildx imagetools inspect ghcr.io/brunoaquino/calculador-api:1.1.0 --form
 **`make deploy`** — aplica os manifestos com a imagem `IMAGE` e espera o rollout. Não edita arquivo versionado: o Kustomize do `kubectl` recusa um overlay em `/tmp` que aponte para `k8s/` fora dessa pasta, então o script copia `k8s/`, reescreve `newName`/`newTag`/`digest` e grava a anotação `calculador.dev/deployed-at` para recriar os Pods. `IMAGE=repo:tag` remove o digest da cópia; `IMAGE=repo@sha256:...` grava o digest. O `trap` apaga a cópia ao terminar.
 
 ```bash
-tmp=$(IMAGE=ghcr.io/brunoaquino/calculador-api:1.1.0 \
+tmp=$(IMAGE=ghcr.io/brunoaquino/calculador-api:1.2.0 \
   PULL_SECRET= \
   K8S_DIR=<raiz>/k8s \
   bash <raiz>/scripts/prepare-overlay.sh)
@@ -421,7 +424,7 @@ kubectl -n calculador port-forward svc/calculador-api 8000:8000
 kubectl delete -k k8s/ --ignore-not-found
 ```
 
-**`make redeploy`** — ciclo de “alterei a API e subi de novo”: publica a imagem multi-arch e aplica no cluster. Use uma tag nova (`TAG=1.1.1`), porque `imagePullPolicy` é `IfNotPresent`.
+**`make redeploy`** — ciclo de “alterei a API e subi de novo”: publica a imagem multi-arch e aplica no cluster. Use uma tag nova (`TAG=1.2.1`), porque `imagePullPolicy` é `IfNotPresent`.
 
 ```bash
 make release
@@ -450,7 +453,7 @@ fi
 **`make kind-load`** — copia a imagem do Docker local para o nó. Sem isso o kubelet procura a tag no registry e cai em `ImagePullBackOff` ou sobe outra versão.
 
 ```bash
-kind load docker-image ghcr.io/brunoaquino/calculador-api:1.1.0 --name calculador
+kind load docker-image ghcr.io/brunoaquino/calculador-api:1.2.0 --name calculador
 ```
 
 **`make kind-down`** — apaga o cluster kind e os containers dele. Não mexe em outro cluster do `kubectl`. Se o cluster já não existe, só avisa.
@@ -487,6 +490,7 @@ make smoke-test
 | GET | `/health/ready` | 200, `"status": "ok"` |
 | GET | `/docs` | Swagger UI |
 | GET | `/docs-json` | OpenAPI JSON |
+| GET | `/metrics` | 200, texto Prometheus |
 
 Exemplos:
 
@@ -646,24 +650,24 @@ No GitHub Actions o job de testes envia o artifact `calculador-reports` com `cov
 
 Em produção cada linha do stdout é um objeto JSON. Toda linha tem `level` (texto, não o número do Pino), `time` (ISO-8601), `pid`, `hostname`, `service`, `version`, `env`, `traceId` e `msg`. No Kubernetes, `hostname` é o nome do Pod. O access log acrescenta `req` (`method`, `url`, `remoteAddress`, `userAgent`), `res.statusCode` e `responseTime`. Log da aplicação também traz `context`. Log sem request, como o de boot, usa `traceId` `system`.
 
-`/health/*` e `/docs` não geram access log.
+`/health/*`, `/docs` e `/metrics` não geram access log. Probe e scrape do Prometheus rodariam a cada poucos segundos e afogariam as linhas úteis.
 
 Exemplo de access log:
 
 ```json
-{"level":"info","time":"2026-11-07T03:58:40.120Z","pid":1,"hostname":"calculador-api-7d4f8c9b5-abcde","traceId":"avaliador-123","req":{"method":"GET","url":"/api/sum?term_one=2&term_two=3","remoteAddress":"10.244.0.12","userAgent":"curl/8.7.1"},"service":"calculador-api","version":"1.1.0","env":"production","res":{"statusCode":200},"responseTime":3,"msg":"request completed"}
+{"level":"info","time":"2026-11-07T03:58:40.120Z","pid":1,"hostname":"calculador-api-7d4f8c9b5-abcde","traceId":"avaliador-123","req":{"method":"GET","url":"/api/sum?term_one=2&term_two=3","remoteAddress":"10.244.0.12","userAgent":"curl/8.7.1"},"service":"calculador-api","version":"1.2.0","env":"production","res":{"statusCode":200},"responseTime":3,"msg":"request completed"}
 ```
 
 Cada conta também gera, em `info`, uma linha da aplicação com o mesmo `traceId`. Assim um `jq` pelo `traceId` mostra a request e o resultado calculado:
 
 ```json
-{"level":"info","time":"2026-11-07T03:58:40.118Z","pid":1,"hostname":"calculador-api-7d4f8c9b5-abcde","traceId":"avaliador-123","service":"calculador-api","version":"1.1.0","env":"production","context":"CalculatorService","operation":"sum","termOne":2,"termTwo":3,"result":5,"msg":"Calculation completed"}
+{"level":"info","time":"2026-11-07T03:58:40.118Z","pid":1,"hostname":"calculador-api-7d4f8c9b5-abcde","traceId":"avaliador-123","service":"calculador-api","version":"1.2.0","env":"production","context":"CalculatorService","operation":"sum","termOne":2,"termTwo":3,"result":5,"msg":"Calculation completed"}
 ```
 
 Uma exceção não tratada gera uma linha `error` com o `traceId` da request, o mesmo do access log e do header `x-trace-id`. O stack vai em `err.stack` e não aparece no corpo do 500 (`Internal server error`). O filtro global (`GlobalExceptionFilter`, registrado como `APP_FILTER`) loga pelo logger que o pino-http liga à request:
 
 ```json
-{"level":"error","time":"2026-11-07T17:09:29.928Z","pid":1,"hostname":"calculador-api-7d4f8c9b5-abcde","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","service":"calculador-api","version":"1.1.0","env":"production","err":{"type":"Error","message":"disk failed","stack":"Error: disk failed\n    at ..."},"context":"GlobalExceptionFilter","msg":"Unhandled exception"}
+{"level":"error","time":"2026-11-07T17:09:29.928Z","pid":1,"hostname":"calculador-api-7d4f8c9b5-abcde","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","service":"calculador-api","version":"1.2.0","env":"production","err":{"type":"Error","message":"disk failed","stack":"Error: disk failed\n    at ..."},"context":"GlobalExceptionFilter","msg":"Unhandled exception"}
 ```
 
 Erros 4xx não geram essa linha. O access log já registra esses casos em `warn`.
@@ -714,7 +718,7 @@ O token precisa de `write:packages` e `read:packages`. O nome da imagem no GHCR 
 
 ```bash
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u SEU_USUARIO --password-stdin
-make release REGISTRY=ghcr.io/SEU_USUARIO TAG=1.1.0
+make release REGISTRY=ghcr.io/SEU_USUARIO TAG=1.2.0
 ```
 
 O pacote é privado por padrão. Ou torne o pacote público em GitHub → Packages → Package settings → Change visibility, ou crie um secret no cluster. Crie o namespace antes do secret:
@@ -729,7 +733,7 @@ kubectl create secret docker-registry ghcr-pull \
   --docker-email=SEU_EMAIL \
   --dry-run=client -o yaml | kubectl apply -f -
 
-make deploy REGISTRY=ghcr.io/SEU_USUARIO TAG=1.1.0 PULL_SECRET=ghcr-pull
+make deploy REGISTRY=ghcr.io/SEU_USUARIO TAG=1.2.0 PULL_SECRET=ghcr-pull
 ```
 
 `PULL_SECRET` adiciona `imagePullSecrets` na hora do apply. O arquivo `k8s/deployment.yaml` não é editado.
@@ -738,8 +742,8 @@ make deploy REGISTRY=ghcr.io/SEU_USUARIO TAG=1.1.0 PULL_SECRET=ghcr-pull
 
 ```bash
 docker login
-make release REGISTRY=docker.io/SEU_USUARIO TAG=1.1.0
-make deploy REGISTRY=docker.io/SEU_USUARIO TAG=1.1.0
+make release REGISTRY=docker.io/SEU_USUARIO TAG=1.2.0
+make deploy REGISTRY=docker.io/SEU_USUARIO TAG=1.2.0
 ```
 
 Repositório público não precisa de secret.
@@ -751,8 +755,8 @@ aws ecr create-repository --repository-name calculador-api --region us-east-1
 aws ecr get-login-password --region us-east-1 \
   | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
-make release REGISTRY=123456789012.dkr.ecr.us-east-1.amazonaws.com TAG=1.1.0
-make deploy REGISTRY=123456789012.dkr.ecr.us-east-1.amazonaws.com TAG=1.1.0 PULL_SECRET=ecr-pull
+make release REGISTRY=123456789012.dkr.ecr.us-east-1.amazonaws.com TAG=1.2.0
+make deploy REGISTRY=123456789012.dkr.ecr.us-east-1.amazonaws.com TAG=1.2.0 PULL_SECRET=ecr-pull
 ```
 
 O token do `docker login` na ECR expira em 12 horas. Em EKS o caminho durável é a role do nó, não um secret de longa duração. O secret acima serve para um teste curto. Crie `ecr-pull` com `kubectl create secret docker-registry`, no mesmo formato do GHCR, usando `--docker-server` do registry da conta.
@@ -764,7 +768,7 @@ O token do `docker login` na ECR expira em 12 horas. Em EKS o caminho durável �
 `make deploy` não altera arquivos do repositório. Ele copia `k8s/` para um diretório temporário, troca `images.newName` e `images.newTag`, grava a anotação `calculador.dev/deployed-at` para recriar os Pods e roda `kubectl apply -k` nessa cópia. Em seguida espera o rollout.
 
 ```bash
-make deploy TAG=1.1.0
+make deploy TAG=1.2.0
 kubectl -n calculador rollout status deploy/calculador-api --timeout=120s
 kubectl -n calculador get pods,svc
 ```
@@ -777,16 +781,16 @@ Sem Make, edite o bloco no fim de `k8s/kustomization.yaml`:
 images:
   - name: calculador-api
     newName: ghcr.io/SEU_USUARIO/calculador-api
-    newTag: "1.1.0"
+    newTag: "1.2.0"
     digest: sha256:...
 ```
 
-O repositório já vem pinado no digest da imagem `1.1.0` publicada pelo CI. Com `digest`, o kustomize ignora `newTag` e o nó baixa exatamente aquela imagem, mesmo que alguém sobrescreva a tag no registry. Ao trocar de registry, apague a linha `digest` ou troque pelo digest da sua imagem (`make image-digest IMAGE=...`).
+O repositório já vem pinado no digest da imagem `1.2.0` publicada pelo CI. Com `digest`, o kustomize ignora `newTag` e o nó baixa exatamente aquela imagem, mesmo que alguém sobrescreva a tag no registry. Ao trocar de registry, apague a linha `digest` ou troque pelo digest da sua imagem (`make image-digest IMAGE=...`).
 
 `make deploy` aceita os dois formatos. `IMAGE=repo:tag` aplica só a tag e remove o digest da cópia. `IMAGE=repo@sha256:...` ou `IMAGE=repo:tag@sha256:...` aplica o digest:
 
 ```bash
-make deploy IMAGE=ghcr.io/brunoaquino/calculador-api:1.1.0@$(make -s image-digest)
+make deploy IMAGE=ghcr.io/brunoaquino/calculador-api:1.2.0@$(make -s image-digest)
 ```
 
 ```bash
@@ -822,6 +826,7 @@ O script confere ClusterIP, ausência de Ingress, `hostNetwork` e `hostPort`. De
 - divisão por zero → 400 com `statusCode`, `error`, `message`, `traceId`, `path` e `timestamp`
 - `term_two=abc` → 400 no mesmo formato
 - header `x-trace-id: smoke-trace-1` ecoado na resposta
+- `GET /metrics` → 200, com `http_request_duration_seconds` e `calculator_operations_total{operation="sum",...}` depois da soma
 
 Cada checagem imprime `PASS` ou `FAIL`. Qualquer falha termina com exit code diferente de zero e apaga o Pod cliente.
 
@@ -848,7 +853,7 @@ Swagger para quem administra o cluster: `make port-forward`, como na seção Swa
 3. Publique uma tag nova e faça o deploy. Tag nova importa: `imagePullPolicy` é `IfNotPresent`, então o nó não baixa de novo uma tag que já tem.
 
 ```bash
-make redeploy TAG=1.1.1
+make redeploy TAG=1.2.1
 make smoke-test
 ```
 
@@ -1025,7 +1030,72 @@ As réplicas preferem nós diferentes (`podAntiAffinity.preferredDuringSchedulin
 
 O processo trata `SIGTERM` (`enableShutdownHooks`) e tem 30s para encerrar (`terminationGracePeriodSeconds`). Não há `preStop` com shell: a imagem distroless não tem shell, e o sleep de lifecycle exige Kubernetes 1.30.
 
-Logs: seção [Logs estruturados](#logs). Não há endpoint de métricas.
+Logs: seção [Logs estruturados](#logs).
+
+<a id="metricas"></a>
+
+### Métricas
+
+`GET /metrics` responde 200 no formato texto do Prometheus (`text/plain; version=0.0.4; charset=utf-8`). Fica fora do prefixo `/api`, como o health (`/api/metrics` é 404), e aparece no Swagger com a tag `metrics`.
+
+| Métrica | Tipo | Labels | Para quê |
+| --- | --- | --- | --- |
+| `http_requests_total` | counter | `method`, `route`, `status_code` | Taxa de requests e de erro por rota. |
+| `http_request_duration_seconds` | histogram | `method`, `route`, `status_code` | Latência por rota (p50, p95, p99). Buckets de 5ms a 2,5s. |
+| `calculator_operations_total` | counter | `operation` (`sum`, `sub`, `mul`, `div`), `result` (`success`, `rejected`) | Quantas contas deram resultado e quantas o serviço recusou. |
+| `process_*`, `nodejs_*` | vários | — | CPU, RSS, heap, event loop lag e GC (`collectDefaultMetrics` do `prom-client`). |
+
+Toda série leva `service` e `version`, então uma troca de versão aparece no próprio gráfico.
+
+- `route` é o template da rota (`/api/sum`, `/health/ready`), nunca a URL com query string. Isso mantém a cardinalidade fixa. Request sem rota (404) entra como `route="unmatched"`.
+- O scrape de `/metrics` não entra em `http_requests_total` nem no access log.
+- `result="rejected"` conta o que o serviço recusou: divisão por zero, resultado fora da faixa segura, resultado pequeno demais. Operando inválido para na validação, antes do serviço, e aparece como `http_requests_total{status_code="400"}`.
+- O registry é próprio da aplicação, não o global do `prom-client`, para os testes não vazarem contagem entre si.
+
+Dentro do cluster, de outro namespace:
+
+```bash
+kubectl run tmp-curl --rm -it --restart=Never --namespace=default \
+  --image=curlimages/curl:8.23.0 --command -- \
+  curl -sS http://calculador-api.calculador.svc.cluster.local:8000/metrics
+```
+
+Ou, para quem administra o cluster, `make port-forward` e `curl -sS http://127.0.0.1:8000/metrics`.
+
+Trecho real depois de uma soma, uma divisão por zero e um path desconhecido:
+
+```text
+http_requests_total{method="GET",route="/api/sum",status_code="200",service="calculador-api",version="1.2.0"} 1
+http_requests_total{method="GET",route="/api/div",status_code="400",service="calculador-api",version="1.2.0"} 1
+http_requests_total{method="GET",route="unmatched",status_code="404",service="calculador-api",version="1.2.0"} 1
+calculator_operations_total{operation="sum",result="success",service="calculador-api",version="1.2.0"} 1
+calculator_operations_total{operation="div",result="rejected",service="calculador-api",version="1.2.0"} 1
+process_resident_memory_bytes{service="calculador-api",version="1.2.0"} 118325248
+```
+
+Consultas úteis no Prometheus:
+
+```promql
+# taxa de erro 5xx
+sum(rate(http_requests_total{status_code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+
+# p95 de latência por rota
+histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))
+
+# proporção de contas recusadas pelo serviço
+sum(rate(calculator_operations_total{result="rejected"}[5m])) / sum(rate(calculator_operations_total[5m]))
+```
+
+Coleta:
+
+- O Pod tem as annotations `prometheus.io/scrape: "true"`, `prometheus.io/port: "8000"` e `prometheus.io/path: "/metrics"`, que um Prometheus com descoberta por annotation já usa.
+- Com Prometheus Operator, aplique o ServiceMonitor opcional (porta `http`, path `/metrics`, a cada 30s). Ele não entra no `kubectl apply -k k8s/` porque o CRD só existe quando o Operator está instalado:
+
+```bash
+kubectl apply -f k8s/monitoring/servicemonitor.yaml
+```
+
+- A NetworkPolicy já libera a porta 8000 para Pods do cluster. Um Prometheus rodando no cluster faz o scrape sem regra nova. De fora do cluster, `/metrics` não é alcançável, como o resto da API.
 
 <a id="ci"></a>
 
@@ -1048,7 +1118,7 @@ Branches e versões:
 | --- | --- |
 | `main` | Versão estável e branch padrão. Push publica a imagem `latest` e `sha-<commit>`. |
 | `develop` | Integração. Recebe os PRs, inclusive os do Dependabot, e roda Testes, Manifestos e Segurança. Não publica imagem. |
-| `v*` (tag) | Release. Publica a imagem semver (`1.1.0`, `1.1`, `1`), que os manifestos pinam por digest. |
+| `v*` (tag) | Release. Publica a imagem semver (`1.2.0`, `1.2`, `1`), que os manifestos pinam por digest. |
 
 Uma versão nova segue esta ordem: suba o `version` do `package.json` na `develop`, leve para a `main` por PR, crie a tag `vX.Y.Z` no merge e, quando o CI publicar, grave o digest novo em `k8s/kustomization.yaml` (`make image-digest`).
 
@@ -1070,7 +1140,7 @@ docker run --rm -v "$PWD:/src:ro" \
   --ignore-unfixed --ignorefile /src/.trivyignore --skip-dirs /src/node_modules /src
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src:ro" \
   aquasec/trivy:0.76.2 image --scanners vuln --severity HIGH,CRITICAL \
-  --ignore-unfixed --ignorefile /src/.trivyignore ghcr.io/brunoaquino/calculador-api:1.1.0
+  --ignore-unfixed --ignorefile /src/.trivyignore ghcr.io/brunoaquino/calculador-api:1.2.0
 ```
 
 <a id="troubleshooting"></a>

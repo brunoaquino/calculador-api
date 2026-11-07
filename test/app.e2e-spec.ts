@@ -280,7 +280,7 @@ describe('Calculador API', () => {
 
     const spec = await http.get('/docs-json').expect(200);
     expect(spec.body.info.title).toBe('Calculador API');
-    expect(spec.body.info.version).toBe('1.1.0');
+    expect(spec.body.info.version).toBe('1.2.0');
     expect(Object.keys(spec.body.paths as Record<string, unknown>)).toEqual(
       expect.arrayContaining([
         '/api/sum',
@@ -289,12 +289,16 @@ describe('Calculador API', () => {
         '/api/div',
         '/health/live',
         '/health/ready',
+        '/metrics',
       ]),
     );
     const parameters = spec.body.paths['/api/div'].get.parameters as Array<{ name: string }>;
     expect(parameters.map((parameter) => parameter.name).sort()).toEqual(['term_one', 'term_two']);
     expect(spec.body.tags.map((tag: { name: string }) => tag.name)).toEqual(
-      expect.arrayContaining(['calculator', 'health']),
+      expect.arrayContaining(['calculator', 'health', 'metrics']),
+    );
+    expect(spec.body.paths['/metrics'].get.responses['200'].content['text/plain'].schema.type).toBe(
+      'string',
     );
   });
 });

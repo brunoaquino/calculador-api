@@ -15,7 +15,7 @@ describe('readAppVersion', () => {
   });
 
   it('reads the application version from the project package.json', () => {
-    expect(readAppVersion()).toBe('1.1.0');
+    expect(readAppVersion()).toBe('1.2.0');
   });
 
   it('reads a version from an explicit file', () => {
