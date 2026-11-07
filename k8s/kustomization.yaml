@@ -22,8 +22,11 @@ resources:
   - networkpolicy.yaml
   - pdb.yaml
 
-# Imagem padrão. `make deploy` sobrescreve newName/newTag numa cópia temporária.
+# Imagem padrão. O mesmo item aceita newName, newTag e digest.
+# Com digest preenchido, o kustomize ignora newTag.
+# `make deploy IMAGE=repo:tag` grava só a tag (remove digest da cópia).
+# `make deploy IMAGE=repo@sha256:...` ou `IMAGE=repo:tag@sha256:...` grava o digest.
 images:
   - name: calculador-api
     newName: ghcr.io/brunoaquino/calculador-api
-    newTag: "1.0.0"
+    newTag: "1.1.0"

@@ -1,11 +1,18 @@
 import { createRequire } from 'node:module';
-import type { Logger as PinoLoggerInstance } from 'pino';
-import type { Options } from 'pino-http';
 import type { Params } from 'nestjs-pino';
+import pino, { type DestinationStream, type Logger as PinoLoggerInstance } from 'pino';
+import type { Options } from 'pino-http';
 import type { AppConfig } from '../../config/app-config';
 import { resolveTraceId } from './trace-id';
 
 const nodeRequire = createRequire(`${process.cwd()}/package.json`);
+
+let logDestination: DestinationStream | undefined;
+
+/** Installed by tests that need a deterministic JSON log stream. Production leaves this unset. */
+export function setLogDestination(destination: DestinationStream | undefined): void {
+  logDestination = destination;
+}
 
 export interface SerializedRequest {
   method?: string;
@@ -89,9 +96,12 @@ export function serializeResponse(response: ResponseLogInput): SerializedRespons
 }
 
 export function createLoggerModuleParams(config: AppConfig): Params {
-  return {
-    pinoHttp: createPinoHttpOptions(config),
-  };
+  const options = createPinoHttpOptions(config);
+  if (logDestination) {
+    return { pinoHttp: [options, logDestination] };
+  }
+
+  return { pinoHttp: options };
 }
 
 export function createPinoHttpOptions(
@@ -126,6 +136,7 @@ export function createPinoHttpOptions(
       ignore: (request) => shouldIgnoreAccessLog(request.url),
     },
     serializers: {
+      err: pino.stdSerializers.err,
       req: (request: RequestLogInput) => serializeRequest(request),
       res: (response: ResponseLogInput) => serializeResponse(response),
     },

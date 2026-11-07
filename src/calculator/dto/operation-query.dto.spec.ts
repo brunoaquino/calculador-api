@@ -48,6 +48,16 @@ describe('OperationQueryDto', () => {
       term_one: 100,
       term_two: 2.5,
     });
+    await expect(transformQuery({ term_one: '0.1', term_two: '-3' })).resolves.toEqual({
+      term_one: 0.1,
+      term_two: -3,
+    });
+    await expect(
+      transformQuery({ term_one: '9007199254740991', term_two: '1e-200' }),
+    ).resolves.toEqual({
+      term_one: 9007199254740991,
+      term_two: 1e-200,
+    });
   });
 
   it('requires both operands', async () => {
@@ -71,6 +81,27 @@ describe('OperationQueryDto', () => {
     await expect(validationMessages({ term_one: '1e400', term_two: 'Infinity' })).resolves.toEqual([
       'term_one must be a finite decimal number',
       'term_two must be a finite decimal number',
+    ]);
+  });
+
+  it('rejects operands outside the safe integer range', async () => {
+    await expect(
+      validationMessages({ term_one: '9007199254740993', term_two: '1' }),
+    ).resolves.toEqual(['term_one must be between -9007199254740991 and 9007199254740991']);
+    await expect(
+      validationMessages({ term_one: '1', term_two: '-9007199254740992' }),
+    ).resolves.toEqual(['term_two must be between -9007199254740991 and 9007199254740991']);
+  });
+
+  it('rejects underflow and values that are not exact doubles', async () => {
+    await expect(validationMessages({ term_one: '1', term_two: '1e-400' })).resolves.toEqual([
+      'term_two underflows to zero',
+    ]);
+    await expect(
+      validationMessages({ term_one: '0.30000000000000001', term_two: '1e-400' }),
+    ).resolves.toEqual([
+      'term_one has more significant digits than a 64-bit float can represent exactly',
+      'term_two underflows to zero',
     ]);
   });
 

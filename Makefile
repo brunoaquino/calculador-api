@@ -22,7 +22,7 @@ export DOCKER_BUILDKIT := 1
 .DEFAULT_GOAL := help
 
 .PHONY: help install lint test test-cov run reports \
-	docker-build docker-run docker-push release \
+	docker-build docker-run docker-push release image-digest \
 	deploy status logs smoke-test check-exposure port-forward undeploy redeploy rollback \
 	kind-up kind-load kind-down local-e2e
 
@@ -106,6 +106,10 @@ docker-push: ## Publica a imagem multi-arch no registry
 		'$(ROOT)'
 
 release: docker-push ## Atalho de docker-push
+
+image-digest: ## Imprime o digest de registro de $(IMAGE)
+	@docker buildx imagetools inspect '$(IMAGE)' --format '{{json .Manifest}}' \
+		| awk -F'"' '/"digest"/ { print $$4; exit }'
 
 deploy: ## Aplica a imagem IMAGE no cluster sem alterar o repositório
 	set -eu; \

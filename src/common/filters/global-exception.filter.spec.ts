@@ -2,9 +2,9 @@ import {
   ArgumentsHost,
   BadRequestException,
   HttpException,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { ErrorResponseBody } from '../dto/error-response.dto';
 import { GlobalExceptionFilter } from './global-exception.filter';
 
@@ -15,22 +15,19 @@ interface ResponseDouble {
 }
 
 describe('GlobalExceptionFilter', () => {
-  const filter = new GlobalExceptionFilter();
-  let errorSpy: jest.SpyInstance;
+  const fallback = { error: jest.fn() };
+  const filter = new GlobalExceptionFilter(fallback as unknown as PinoLogger);
 
   beforeEach(() => {
-    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    errorSpy.mockRestore();
+    fallback.error.mockReset();
   });
 
   it('formats an HttpException string response', () => {
+    const requestLog = { error: jest.fn() };
     const { response, body } = capture(
       filter,
       new BadRequestException('Division by zero is not allowed'),
-      { id: 'trace-1', path: '/api/div' },
+      { id: 'trace-1', path: '/api/div', log: requestLog },
     );
 
     expect(body).toMatchObject({
@@ -42,7 +39,8 @@ describe('GlobalExceptionFilter', () => {
     });
     expect(body.timestamp).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
     expect(response.setHeader).toHaveBeenCalledWith('x-trace-id', 'trace-1');
-    expect(errorSpy).not.toHaveBeenCalled();
+    expect(requestLog.error).not.toHaveBeenCalled();
+    expect(fallback.error).not.toHaveBeenCalled();
   });
 
   it('keeps string and string-array messages from exception bodies', () => {
@@ -97,9 +95,14 @@ describe('GlobalExceptionFilter', () => {
     );
   });
 
-  it('hides unknown failures behind a generic 500 and logs the stack', () => {
+  it('logs unhandled errors through the request logger with err and context', () => {
     const failure = new Error('disk failed');
-    const { body } = capture(filter, failure, { id: 'trace-500', path: '/api/sum' });
+    const requestLog = { error: jest.fn() };
+    const { body } = capture(filter, failure, {
+      id: 'trace-500',
+      path: '/api/sum',
+      log: requestLog,
+    });
 
     expect(body).toMatchObject({
       statusCode: 500,
@@ -109,24 +112,42 @@ describe('GlobalExceptionFilter', () => {
       path: '/api/sum',
     });
     expect(JSON.stringify(body)).not.toContain('disk failed');
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Unhandled exception'));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('disk failed'));
+    expect(requestLog.error).toHaveBeenCalledTimes(1);
+    expect(requestLog.error).toHaveBeenCalledWith(
+      { err: failure, context: 'GlobalExceptionFilter' },
+      'Unhandled exception',
+    );
+    expect(fallback.error).not.toHaveBeenCalled();
   });
 
-  it('logs errors that are not Error instances', () => {
-    capture(filter, 'fail', { path: '/api/sum' });
-    expect(errorSpy).toHaveBeenCalledWith('Unhandled exception: fail');
-
-    errorSpy.mockClear();
-    capture(filter, { boom: true }, { path: '/api/sum' });
-    expect(errorSpy).toHaveBeenCalledWith('Unhandled exception: Non-error exception');
-  });
-
-  it('logs an error whose stack was stripped', () => {
+  it('falls back to the injected logger when the request logger is absent', () => {
     const failure = new Error('disk failed');
-    failure.stack = undefined;
     capture(filter, failure, { path: '/api/sum' });
-    expect(errorSpy).toHaveBeenCalledWith('Unhandled exception: disk failed');
+    expect(fallback.error).toHaveBeenCalledWith(
+      { err: failure, context: 'GlobalExceptionFilter' },
+      'Unhandled exception',
+    );
+
+    fallback.error.mockClear();
+    capture(filter, failure, { path: '/api/sum', log: { error: 'nope' } });
+    expect(fallback.error).toHaveBeenCalledWith(
+      { err: failure, context: 'GlobalExceptionFilter' },
+      'Unhandled exception',
+    );
+
+    fallback.error.mockClear();
+    capture(filter, 'fail', { path: '/api/sum', log: null });
+    expect(fallback.error).toHaveBeenCalledWith(
+      { err: 'fail', context: 'GlobalExceptionFilter' },
+      'Unhandled exception',
+    );
+
+    fallback.error.mockClear();
+    capture(filter, { boom: true }, { path: '/api/sum' });
+    expect(fallback.error).toHaveBeenCalledWith(
+      { err: { boom: true }, context: 'GlobalExceptionFilter' },
+      'Unhandled exception',
+    );
   });
 
   it('generates a trace id when the request does not have a usable one', () => {
@@ -164,7 +185,7 @@ describe('GlobalExceptionFilter', () => {
 function capture(
   filter: GlobalExceptionFilter,
   exception: unknown,
-  request: { id?: unknown; path?: string; url?: string; originalUrl?: string },
+  request: { id?: unknown; path?: string; url?: string; originalUrl?: string; log?: unknown },
 ): { response: ResponseDouble; body: ErrorResponseBody } {
   const response: ResponseDouble = {
     setHeader: jest.fn(),
@@ -178,7 +199,7 @@ function capture(
 }
 
 function httpHost(
-  request: { id?: unknown; path?: string; url?: string; originalUrl?: string },
+  request: { id?: unknown; path?: string; url?: string; originalUrl?: string; log?: unknown },
   response: ResponseDouble,
 ): ArgumentsHost {
   return {

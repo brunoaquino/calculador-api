@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+# Mesma imagem do scan local. O digest é o índice multi-arch.
+# Preferimos o container oficial ao trivy-action: o action baixa um Trivy
+# flutuante e executa em Node (origem do aviso de depreciação do Node 20).
+# O digest fixa o scanner que o job e a máquina local realmente rodam.
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -18,10 +25,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -38,7 +45,7 @@ jobs:
 
       - name: Publicar relatórios
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: calculador-reports
           if-no-files-found: ignore
@@ -69,7 +76,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Validar scripts
         run: |
@@ -85,30 +92,89 @@ jobs:
           chmod +x "$RUNNER_TEMP/kubectl"
           "$RUNNER_TEMP/kubectl" kustomize k8s > "$RUNNER_TEMP/rendered.yaml"
           docker run --rm -v "$RUNNER_TEMP/rendered.yaml:/rendered.yaml:ro" \
-            ghcr.io/yannh/kubeconform:v0.6.7 \
+            ghcr.io/yannh/kubeconform:v0.6.7@sha256:0925177fb05b44ce18574076141b5c3d83235e1904d3f952182ac99ddc45762c \
             -strict -summary -kubernetes-version 1.32.0 /rendered.yaml
+
+  security:
+    name: Segurança
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Trivy no repositório
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/trivy-cache" "${RUNNER_TEMP}/trivy-out"
+          ignore=()
+          if [[ -f "${GITHUB_WORKSPACE}/.trivyignore" ]]; then
+            ignore+=(--ignorefile /src/.trivyignore)
+          fi
+          common=(
+            --cache-dir /cache
+            --scanners "vuln,secret,misconfig"
+            --severity "HIGH,CRITICAL"
+            --ignore-unfixed
+          )
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -v "${GITHUB_WORKSPACE}:/src:ro" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${RUNNER_TEMP}/trivy-out:/out" \
+            "${TRIVY_IMAGE}" \
+            fs "${common[@]}" "${ignore[@]}" \
+            --exit-code 0 \
+            --format sarif \
+            --output /out/trivy-fs.sarif \
+            /src
+          cp "${RUNNER_TEMP}/trivy-out/trivy-fs.sarif" "${GITHUB_WORKSPACE}/trivy-fs.sarif"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -v "${GITHUB_WORKSPACE}:/src:ro" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            "${TRIVY_IMAGE}" \
+            fs "${common[@]}" "${ignore[@]}" \
+            --exit-code 1 \
+            --format table \
+            /src
+
+      # Forks e repositórios sem code scanning falham o upload. O exit code do Trivy continua valendo.
+      - name: Enviar SARIF
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
 
   publish:
     name: Imagem
-    needs: [test, manifests]
+    needs: [test, manifests, security]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Login no GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -116,7 +182,7 @@ jobs:
 
       - name: Tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -126,8 +192,48 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
+      # Carrega só amd64 para o Trivy. O cache GHA e o builder deixam o push seguinte rápido.
+      - name: Build runtime amd64 para scan
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0bc # v7.4.0
+        with:
+          context: .
+          target: runtime
+          load: true
+          push: false
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          tags: calculador-api:ci-scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            SOURCE=https://github.com/${{ github.repository }}
+
+      - name: Trivy na imagem
+        run: |
+          set -euo pipefail
+          args=(
+            image
+            --scanners vuln
+            --severity "HIGH,CRITICAL"
+            --ignore-unfixed
+            --exit-code 1
+            --format table
+          )
+          if [[ -f .trivyignore ]]; then
+            args+=(--ignorefile /src/.trivyignore)
+          fi
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${GITHUB_WORKSPACE}:/src:ro" \
+            "${TRIVY_IMAGE}" \
+            "${args[@]}" \
+            calculador-api:ci-scan
+
       - name: Build e push multi-arch
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0bc # v7.4.0
         with:
           context: .
           target: runtime
@@ -142,3 +248,10 @@ jobs:
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
             SOURCE=https://github.com/${{ github.repository }}
+
+      - name: Digest no resumo
+        run: |
+          {
+            echo "## Imagem"
+            echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

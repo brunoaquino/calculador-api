@@ -2,6 +2,11 @@
 # Copia k8s/ para um diretório temporário, troca a imagem e grava um patch de deploy.
 # Imprime o diretório na stdout. Quem chama é dono de apagá-lo.
 # Não altera os arquivos versionados.
+#
+# IMAGE:
+#   repo:tag              -> newName + newTag, sem digest (mesmo que o original tenha)
+#   repo@sha256:...       -> newName + digest
+#   repo:tag@sha256:...   -> newName + newTag + digest (no kustomize o digest vence)
 set -euo pipefail
 
 if [[ -z "${IMAGE:-}" ]]; then
@@ -63,7 +68,7 @@ quoted_digest="$(yaml_quote "$digest")"
 
 kustomization="${tmp}/kustomization.yaml"
 if ! awk_out="$(
-  NAME_Q="$quoted_name" TAG_Q="$quoted_tag" DIGEST_Q="$quoted_digest" DIGEST_RAW="$digest" awk '
+  NAME_Q="$quoted_name" TAG_Q="$quoted_tag" TAG_RAW="$tag" DIGEST_Q="$quoted_digest" DIGEST_RAW="$digest" awk '
     BEGIN { seen = 0; skipping = 0 }
     /^images:[[:space:]]*$/ && !seen {
       seen = 1
@@ -71,10 +76,11 @@ if ! awk_out="$(
       print "images:"
       print "  - name: calculador-api"
       print "    newName: " ENVIRON["NAME_Q"]
+      if (ENVIRON["TAG_RAW"] != "") {
+        print "    newTag: " ENVIRON["TAG_Q"]
+      }
       if (ENVIRON["DIGEST_RAW"] != "") {
         print "    digest: " ENVIRON["DIGEST_Q"]
-      } else {
-        print "    newTag: " ENVIRON["TAG_Q"]
       }
       next
     }

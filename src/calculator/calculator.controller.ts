@@ -34,12 +34,13 @@ function ApiOperands(termOneExample: string, termTwoExample: string) {
     ApiBadRequestResponse({
       type: ErrorResponseDto,
       description:
-        'Invalid operands, division by zero, or a result that is not a finite number. These cases use HTTP 400.',
+        'Invalid operands, division by zero, a result outside the safe integer range, or a result too small to represent exactly. These cases use HTTP 400.',
     }),
     ApiNotFoundResponse({ type: ErrorResponseDto }),
     ApiInternalServerErrorResponse({
       type: ErrorResponseDto,
-      description: 'Unexpected failure. The message is generic and the stack is only logged.',
+      description:
+        'Unexpected failure. The message is generic and the stack is logged once with the request trace id.',
     }),
   );
 }
@@ -75,7 +76,7 @@ export class CalculatorController {
     operationId: 'div',
     summary: 'Divide term_one by term_two',
     description:
-      'Returns term_one / term_two. 5 divided by 2 is 2.5. Division by zero responds with HTTP 400.',
+      'Returns term_one / term_two using exact decimal arithmetic. 5 divided by 2 is 2.5. Non-integers are rounded to 15 significant digits. Division by zero responds with HTTP 400.',
   })
   @ApiOperands('5', '2')
   div(@Query() query: OperationQueryDto): OperationResultDto {

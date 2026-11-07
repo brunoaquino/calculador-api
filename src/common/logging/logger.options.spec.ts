@@ -5,11 +5,13 @@ import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import type { AppConfig } from '../../config/app-config';
 import {
+  createLoggerModuleParams,
   createPinoHttpOptions,
   isPackageAvailable,
   resolveAccessLogLevel,
   serializeRequest,
   serializeResponse,
+  setLogDestination,
   shouldIgnoreAccessLog,
 } from './logger.options';
 
@@ -107,6 +109,26 @@ describe('serializers', () => {
   it('copies the response status code', () => {
     expect(serializeResponse({ statusCode: 201 })).toEqual({ statusCode: 201 });
     expect(serializeResponse({})).toEqual({ statusCode: undefined });
+  });
+});
+
+describe('createLoggerModuleParams', () => {
+  it('uses stdout unless a test destination is installed', () => {
+    expect(Array.isArray(createLoggerModuleParams(config).pinoHttp)).toBe(false);
+
+    const stream = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    setLogDestination(stream);
+    try {
+      expect(createLoggerModuleParams(config).pinoHttp).toEqual([expect.any(Object), stream]);
+    } finally {
+      setLogDestination(undefined);
+    }
+
+    expect(Array.isArray(createLoggerModuleParams(config).pinoHttp)).toBe(false);
   });
 });
 
@@ -247,6 +269,34 @@ describe('createPinoHttpOptions', () => {
       msg: 'Calculation completed',
     });
     expect(missing.headers['x-trace-id']).toMatch(/^[a-f0-9]{32}$/);
+  });
+
+  it('serializes err with type, message and stack', () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer | string, _encoding, callback) {
+        lines.push(chunk.toString());
+        callback();
+      },
+    });
+    const middleware = pinoHttp(createPinoHttpOptions(config, false), stream);
+    const failure = new Error('disk failed');
+    middleware.logger.error(
+      { err: failure, context: 'GlobalExceptionFilter' },
+      'Unhandled exception',
+    );
+
+    const record = JSON.parse(lines.join('')) as Record<string, unknown>;
+    expect(record).toMatchObject({
+      level: 'error',
+      context: 'GlobalExceptionFilter',
+      msg: 'Unhandled exception',
+    });
+    expect(record.err).toMatchObject({
+      type: 'Error',
+      message: 'disk failed',
+    });
+    expect((record.err as { stack: string }).stack).toContain('disk failed');
   });
 });
 

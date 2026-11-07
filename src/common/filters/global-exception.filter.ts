@@ -4,8 +4,9 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
-  Logger,
+  Injectable,
 } from '@nestjs/common';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { ErrorResponseBody } from '../dto/error-response.dto';
 import { isRecord } from '../is-record';
 import { generateTraceId } from '../logging/trace-id';
@@ -15,6 +16,7 @@ interface HttpRequest {
   path?: string;
   url?: string;
   originalUrl?: string;
+  log?: unknown;
 }
 
 interface HttpResponse {
@@ -23,9 +25,19 @@ interface HttpResponse {
   json(body: ErrorResponseBody): void;
 }
 
+interface BoundLogger {
+  error(payload: { err: unknown; context: string }, message: string): void;
+}
+
+const UNHANDLED_MESSAGE = 'Unhandled exception';
+
 @Catch()
+@Injectable()
 export class GlobalExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(GlobalExceptionFilter.name);
+  constructor(
+    @InjectPinoLogger(GlobalExceptionFilter.name)
+    private readonly logger: PinoLogger,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
@@ -42,12 +54,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     };
 
     if (!(exception instanceof HttpException)) {
-      this.logger.error(`Unhandled exception: ${describeException(exception)}`);
+      this.logUnhandled(request, exception);
     }
 
     response.setHeader('x-trace-id', body.traceId);
     response.status(statusCode).json(body);
   }
+
+  private logUnhandled(request: HttpRequest, exception: unknown): void {
+    const payload = { err: exception, context: GlobalExceptionFilter.name };
+    const requestLogger = request.log;
+    if (isBoundLogger(requestLogger)) {
+      requestLogger.error(payload, UNHANDLED_MESSAGE);
+      return;
+    }
+
+    this.logger.error(payload, UNHANDLED_MESSAGE);
+  }
+}
+
+function isBoundLogger(value: unknown): value is BoundLogger {
+  return isRecord(value) && typeof value.error === 'function';
 }
 
 function resolveStatus(exception: unknown): number {
@@ -102,18 +129,6 @@ function resolveRequestPath(request: HttpRequest): string {
   }
 
   return path;
-}
-
-function describeException(exception: unknown): string {
-  if (exception instanceof Error) {
-    return exception.stack ?? exception.message;
-  }
-
-  if (typeof exception === 'string') {
-    return exception;
-  }
-
-  return 'Non-error exception';
 }
 
 function httpErrorName(statusCode: number): string {

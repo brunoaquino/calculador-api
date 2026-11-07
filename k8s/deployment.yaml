@@ -37,16 +37,19 @@ spec:
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: calculador-api
+      # Preferência de nós distintos. Não é obrigatória: no kind de um nó as duas réplicas agendam.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: calculador-api
       containers:
         - name: calculador-api
-          image: calculador-api
+          image: calculador-api:1.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -55,16 +58,30 @@ spec:
           envFrom:
             - configMapRef:
                 name: calculador-api
+          env:
+            - name: NODE_OPTIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: calculador-api
+                  key: NODE_OPTIONS
+          # Cadeia de memória: limit 256Mi > max-old-space-size 160 > readiness 144 MiB.
+          # O readiness falha antes do teto do V8 e bem antes do OOM do cgroup.
+          # Request 192Mi ≈ RSS sob carga (~141MiB) + 20%. Memória não é comprimível:
+          # o request cobre o pico para o scheduler não superlotar o nó.
+          # CPU é comprimível: ociosa fica em ~0m e 50 conexões em saturação usam ~1350m.
+          # O request de 100m reserva a linha de base sem travar o agendamento em nó pequeno;
+          # o limit de 1 CPU absorve picos (com 500m a mesma carga caiu de ~6000 para ~2200 req/s).
           resources:
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 100m
+              memory: 192Mi
             limits:
-              cpu: 500m
+              cpu: 1000m
               memory: 256Mi
+          # Processo no ar. O heap fica na readiness.
           startupProbe:
             httpGet:
-              path: /health/ready
+              path: /health/live
               port: http
             periodSeconds: 2
             timeoutSeconds: 2

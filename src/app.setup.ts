@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { RequestHandler } from 'express';
 import helmet from 'helmet';
-import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { SAFE_INTEGER_LIMIT } from './calculator/exact-decimal';
 import { getAppConfig } from './config/app-config';
 
 interface ExpressServer {
@@ -39,7 +39,6 @@ export function configureApp(app: INestApplication): void {
       transformOptions: { enableImplicitConversion: false },
     }),
   );
-  app.useGlobalFilters(new GlobalExceptionFilter());
 
   if (config.swaggerEnabled) {
     const document = SwaggerModule.createDocument(
@@ -47,7 +46,9 @@ export function configureApp(app: INestApplication): void {
       new DocumentBuilder()
         .setTitle('Calculador API')
         .setDescription(
-          'Arithmetic operations over HTTP. Invalid operands, division by zero and non-finite results respond with HTTP 400. Unexpected failures respond with HTTP 500 and a generic message.',
+          'Arithmetic operations over HTTP. Operands must be exactly representable IEEE-754 doubles within ' +
+            `±${SAFE_INTEGER_LIMIT}. Invalid operands, division by zero, results outside that safe range and results too small to represent exactly respond with HTTP 400. ` +
+            'Non-integer results are rounded to 15 significant digits. Unexpected failures respond with HTTP 500 and a generic message.',
         )
         .setVersion(config.version)
         .addTag('calculator', 'Basic arithmetic')

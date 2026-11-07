@@ -1,6 +1,14 @@
+import { ExactDecimal, SAFE_INTEGER_LIMIT } from '../exact-decimal';
+
 const ALTERNATE_BASE_PREFIX = /^[+-]?0[xob]/i;
 
-export function parseFiniteNumber(value: unknown): number | undefined {
+export type OperandRejectionReason = 'range' | 'underflow' | 'precision';
+
+export class OperandRejection {
+  constructor(readonly reason: OperandRejectionReason) {}
+}
+
+export function parseFiniteNumber(value: unknown): number | OperandRejection | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }
@@ -18,5 +26,19 @@ export function parseFiniteNumber(value: unknown): number | undefined {
     return undefined;
   }
 
-  return parsed;
+  const exact = new ExactDecimal(value);
+  if (exact.abs().greaterThan(SAFE_INTEGER_LIMIT)) {
+    return new OperandRejection('range');
+  }
+
+  const shortest = new ExactDecimal(String(parsed));
+  if (exact.equals(shortest)) {
+    return parsed;
+  }
+
+  if (parsed === 0) {
+    return new OperandRejection('underflow');
+  }
+
+  return new OperandRejection('precision');
 }

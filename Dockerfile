@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # deps — dependências completas. O cache do npm fica fora da camada.
-FROM node:22-bookworm-slim AS deps
+# O digest é o índice multi-arch (tag@sha256), para o buildx resolver amd64 e arm64.
+FROM node:22-trixie-slim@sha256:be1e2a3dc2c4fd68cdfadad2a696a280e0d2749098bee509230174d72fb768c6 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -22,15 +23,15 @@ FROM scratch AS reports
 COPY --from=test /app/coverage /coverage
 COPY --from=test /app/reports /reports
 
-# prod-deps — runtime em glibc, compatível com a distroless debian12.
-FROM node:22-bookworm-slim AS prod-deps
+# prod-deps — mesmo Debian 13 (glibc) da distroless do runtime.
+FROM node:22-trixie-slim@sha256:be1e2a3dc2c4fd68cdfadad2a696a280e0d2749098bee509230174d72fb768c6 AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev
 
 # runtime — estágio final. `docker build .` produz esta imagem.
-FROM gcr.io/distroless/nodejs22-debian12:nonroot AS runtime
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:8ad9cc935b7843c4024b7e1487b5ef472c354ea847b97c667023e2618552607e AS runtime
 
 ARG VERSION=0.0.0
 ARG SOURCE=https://github.com/brunoaquino/calculador-api
@@ -45,10 +46,14 @@ COPY --from=build --chown=65532:65532 /app/dist ./dist
 COPY --from=prod-deps --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=prod-deps --chown=65532:65532 /app/package.json ./package.json
 
+# Cadeia de memória: limit do container 256Mi > max-old-space-size 160
+# > HEALTH_HEAP_THRESHOLD_MB 144. O readiness falha antes do teto do V8
+# e bem antes do OOM do cgroup. O ConfigMap repete os mesmos valores.
 ENV NODE_ENV=production \
     PORT=8000 \
     HOME=/tmp \
-    HEALTH_HEAP_THRESHOLD_MB=200
+    NODE_OPTIONS=--max-old-space-size=160 \
+    HEALTH_HEAP_THRESHOLD_MB=144
 
 EXPOSE 8000
 USER 65532:65532

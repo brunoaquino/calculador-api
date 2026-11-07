@@ -102,7 +102,7 @@ describe('Calculador API', () => {
     expect(response.body.message).toEqual(['property extra should not exist']);
   });
 
-  it('rejects division by zero and a non-finite product', async () => {
+  it('rejects division by zero and a product outside the safe range', async () => {
     const division = await http
       .get('/api/div')
       .query({ term_one: '1', term_two: '0' })
@@ -120,9 +120,100 @@ describe('Calculador API', () => {
 
     const overflow = await http
       .get('/api/mul')
-      .query({ term_one: '1e308', term_two: '10' })
+      .query({ term_one: '3000000000', term_two: '4000000000' })
+      .set('x-trace-id', 'safe-range-result')
       .expect(400);
-    expect(overflow.body.message).toBe('Operation result is not a finite number');
+    expect(overflow.body).toEqual({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: 'Operation result exceeds the safe range of -9007199254740991 to 9007199254740991',
+      traceId: 'safe-range-result',
+      path: '/api/mul',
+      timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+    });
+  });
+
+  it.each([
+    ['/api/sum', '0.1', '0.2', 0.3],
+    ['/api/sub', '0.3', '0.1', 0.2],
+    ['/api/mul', '1.1', '1.1', 1.21],
+    ['/api/div', '0.3', '0.1', 3],
+    ['/api/div', '1', '3', 0.333333333333333],
+    ['/api/div', '2', '3', 0.666666666666667],
+    ['/api/div', '5', '2', 2.5],
+    ['/api/sub', '4', '1', 3],
+    ['/api/sum', '9007199254740990', '1', 9007199254740991],
+    ['/api/div', '1', '1e-15', 1000000000000000],
+  ])('returns an exact %s of %s and %s', async (path, termOne, termTwo, result) => {
+    await http.get(path).query({ term_one: termOne, term_two: termTwo }).expect(200).expect({
+      result,
+    });
+  });
+
+  it('rejects an operand outside the safe integer range', async () => {
+    const response = await http
+      .get('/api/sum')
+      .query({ term_one: '9007199254740993', term_two: '1' })
+      .set('x-trace-id', 'safe-range-operand')
+      .expect(400);
+
+    expect(response.body).toEqual({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: ['term_one must be between -9007199254740991 and 9007199254740991'],
+      traceId: 'safe-range-operand',
+      path: '/api/sum',
+      timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+    });
+    expect(response.headers['x-trace-id']).toBe('safe-range-operand');
+  });
+
+  it('rejects an underflowing divisor before division by zero', async () => {
+    const response = await http
+      .get('/api/div')
+      .query({ term_one: '1', term_two: '1e-400' })
+      .set('traceparent', TRACEPARENT)
+      .expect(400);
+
+    expect(response.body).toEqual({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: ['term_two underflows to zero'],
+      traceId: TRACE_ID,
+      path: '/api/div',
+      timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+    });
+    expect(JSON.stringify(response.body)).not.toContain('Division by zero');
+  });
+
+  it('rejects a product that is too small to represent exactly', async () => {
+    const response = await http
+      .get('/api/mul')
+      .query({ term_one: '1e-200', term_two: '1e-200' })
+      .set('x-trace-id', 'too-small')
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: 'Operation result is too small to be represented exactly',
+      traceId: 'too-small',
+      path: '/api/mul',
+    });
+  });
+
+  it('rejects a sum that overflows the safe integer range', async () => {
+    const response = await http
+      .get('/api/sum')
+      .query({ term_one: '9007199254740991', term_two: '1' })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: 'Operation result exceeds the safe range of -9007199254740991 to 9007199254740991',
+      path: '/api/sum',
+    });
   });
 
   it('echoes traceparent, then x-trace-id, then x-request-id, then a generated id', async () => {
@@ -189,7 +280,7 @@ describe('Calculador API', () => {
 
     const spec = await http.get('/docs-json').expect(200);
     expect(spec.body.info.title).toBe('Calculador API');
-    expect(spec.body.info.version).toBe('1.0.0');
+    expect(spec.body.info.version).toBe('1.1.0');
     expect(Object.keys(spec.body.paths as Record<string, unknown>)).toEqual(
       expect.arrayContaining([
         '/api/sum',

@@ -11,5 +11,8 @@ data:
   LOG_LEVEL: "info"
   SWAGGER_ENABLED: "true"
   SERVICE_NAME: "calculador-api"
-  # Abaixo do limit de memória do container (256Mi).
-  HEALTH_HEAP_THRESHOLD_MB: "200"
+  # Cadeia de memória: limit 256Mi > max-old-space-size 160 > readiness 144.
+  # 160 MiB de old space deixam folga para código, buffers e memória nativa.
+  # 144 é 90% de 160: o readiness falha antes do teto do V8 e bem antes do OOM.
+  NODE_OPTIONS: "--max-old-space-size=160"
+  HEALTH_HEAP_THRESHOLD_MB: "144"

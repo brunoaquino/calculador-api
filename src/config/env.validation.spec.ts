@@ -18,7 +18,7 @@ describe('validateEnvironment', () => {
       logLevel: 'info',
       swaggerEnabled: true,
       serviceName: 'calculador-api',
-      version: '1.0.0',
+      version: '1.1.0',
       healthHeapThresholdMb: 200,
     });
   });
@@ -60,7 +60,7 @@ describe('validateEnvironment', () => {
       logLevel: 'warn',
       swaggerEnabled: false,
       serviceName: 'billing-api',
-      version: '1.0.0',
+      version: '1.1.0',
       healthHeapThresholdMb: 128,
     });
   });
