@@ -194,7 +194,7 @@ jobs:
 
       # Carrega só amd64 para o Trivy. O cache GHA e o builder deixam o push seguinte rápido.
       - name: Build runtime amd64 para scan
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0bc # v7.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: runtime
@@ -233,7 +233,7 @@ jobs:
 
       - name: Build e push multi-arch
         id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0bc # v7.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: runtime
