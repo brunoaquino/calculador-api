@@ -1042,12 +1042,22 @@ Logs: seção [Logs estruturados](#logs). Não há endpoint de métricas.
 
 Tags da imagem: o SHA do commit, `latest` na branch padrão, e semver nas tags `v*`. O login usa `GITHUB_TOKEN` com `packages: write`. O workflow não faz deploy no cluster.
 
+Branches e versões:
+
+| Ref | Papel |
+| --- | --- |
+| `main` | Versão estável e branch padrão. Push publica a imagem `latest` e `sha-<commit>`. |
+| `develop` | Integração. Recebe os PRs, inclusive os do Dependabot, e roda Testes, Manifestos e Segurança. Não publica imagem. |
+| `v*` (tag) | Release. Publica a imagem semver (`1.1.0`, `1.1`, `1`), que os manifestos pinam por digest. |
+
+Uma versão nova segue esta ordem: suba o `version` do `package.json` na `develop`, leve para a `main` por PR, crie a tag `vX.Y.Z` no merge e, quando o CI publicar, grave o digest novo em `k8s/kustomization.yaml` (`make image-digest`).
+
 Cadeia de suprimentos:
 
 - O scanner é o container oficial `aquasec/trivy:0.76.2`, pinado por digest. O CI e a máquina local rodam o mesmo binário. O `trivy-action` baixaria um Trivy à parte.
 - Actions de terceiros pinadas por SHA de commit, com a versão em comentário.
 - Imagens base (`node:22-trixie-slim` e `gcr.io/distroless/nodejs22-debian13:nonroot`) pinadas por digest.
-- `.github/dependabot.yml` abre PR semanal para Docker, GitHub Actions e npm, para os digests e SHAs não envelhecerem.
+- `.github/dependabot.yml` abre PR semanal na `develop` para Docker, GitHub Actions e npm, para os digests e SHAs não envelhecerem. Atualização major (NestJS 12, Node 25) fica de fora: é decisão de projeto, feita à mão.
 - `multer` fica em `2.5.0` via `overrides` no `package.json`. A versão que o `@nestjs/platform-express` traz (2.4.0) tem um CVE HIGH.
 - `.trivyignore` aceita dois CVEs do `zlib1g` da distroless, com data de expiração. O Debian já corrigiu, mas a distroless ainda não reconstruiu. O binário do Node não linka o `libz` do sistema (usa o zlib embutido, `process.versions.zlib`), então a API não carrega esse pacote. Depois da data, o scan volta a falhar até a base ser atualizada.
 

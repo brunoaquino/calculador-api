@@ -1,15 +1,30 @@
 # Atualiza pins de digest (Dockerfile) e de SHA (GitHub Actions), além do npm.
+# Os PRs entram na develop; a main só recebe o que já passou por lá.
+# Major fica de fora: troca de NestJS ou de Node major é decisão de projeto,
+# feita à mão, não um bump semanal.
 version: 2
 updates:
   - package-ecosystem: docker
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
