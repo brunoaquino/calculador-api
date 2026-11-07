@@ -826,7 +826,7 @@ O script confere ClusterIP, ausência de Ingress, `hostNetwork` e `hostPort`. De
 - divisão por zero → 400 com `statusCode`, `error`, `message`, `traceId`, `path` e `timestamp`
 - `term_two=abc` → 400 no mesmo formato
 - header `x-trace-id: smoke-trace-1` ecoado na resposta
-- `GET /metrics` → 200, com `http_request_duration_seconds` e `calculator_operations_total{operation="sum",...}` depois da soma
+- `GET /metrics` → 200, declarando `http_requests_total`, `http_request_duration_seconds` e `calculator_operations_total`. O teste não exige a série da soma, porque com 2 réplicas o scrape pode cair no Pod que não atendeu a conta.
 
 Cada checagem imprime `PASS` ou `FAIL`. Qualquer falha termina com exit code diferente de zero e apaga o Pod cliente.
 

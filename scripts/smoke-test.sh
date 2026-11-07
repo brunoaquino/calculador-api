@@ -297,14 +297,15 @@ expect_metrics() {
     fail "GET /metrics (HTTP ${STATUS}, esperado 200) $(snippet "$BODY")"
     return 0
   fi
-  if ! printf '%s' "$BODY" | grep -Fq 'http_request_duration_seconds'; then
-    fail "GET /metrics não contém http_request_duration_seconds"
-    return 0
-  fi
-  if ! printf '%s' "$BODY" | grep -F 'calculator_operations_total{' | grep -Fq 'operation="sum"'; then
-    fail "GET /metrics não contém calculator_operations_total{ com operation=\"sum\""
-    return 0
-  fi
+  # O Service balanceia entre réplicas: o scrape pode cair num Pod que ainda
+  # não atendeu nenhuma conta, então só as declarações # TYPE são garantidas.
+  local family
+  for family in http_requests_total http_request_duration_seconds calculator_operations_total; do
+    if ! printf '%s' "$BODY" | grep -Fq "# TYPE ${family} "; then
+      fail "GET /metrics não declara ${family}"
+      return 0
+    fi
+  done
   pass "GET /metrics"
   return 0
 }
