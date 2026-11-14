@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev
 
 # runtime — estágio final. `docker build .` produz esta imagem.
-FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:8ad9cc935b7843c4024b7e1487b5ef472c354ea847b97c667023e2618552607e AS runtime
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:39c66687298417dbf3ff2fb8b6012c20554494e16414ef7afd07b9abbb45b501 AS runtime
 
 ARG VERSION=0.0.0
 ARG SOURCE=https://github.com/brunoaquino/calculador-api
